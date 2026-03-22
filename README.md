@@ -14,6 +14,8 @@ A production-grade face tracking pipeline designed for counting unique visitors 
 ## 🏗️ System Architecture
 The pipeline follows a modular data-flow design:
 
+![System Architecture](assets/architecture.png)
+
 ```mermaid
 graph TD
     A[Video Source: MP4/RTSP] --> B[FaceDetector: YOLOv8-Face]
