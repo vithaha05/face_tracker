@@ -1,0 +1,15 @@
+{
+  "video_source": "data/sample.mp4",
+  "yolo_model_path": "yolov8n.pt",
+  "model_name": "buffalo_l",
+  "frame_skip": 3,
+  "similarity_threshold": 0.4,
+  "detection_confidence": 0.5,
+  "db_path": "faces_db/faces.db",
+  "log_dir": "logs",
+  "display_output": true,
+  "max_track_age": 30,
+  "track_n_init": 3,
+  "exit_timeout_frames": 300,
+  "count_print_interval": 30
+}
