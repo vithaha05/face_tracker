@@ -112,24 +112,38 @@ class FaceDetector:
         bodies = self._run_body_model(frame)
         if self.debug_mode: logger.debug(f"Raw body detections: {len(bodies)}")
         
-        # Step 3: Match using IoU
+        # Step 3: Match using Containment (Face is almost always inside body)
         matched_results = []
         used_faces = set()
         
         for b in bodies:
-            b_vis = self.estimate_visibility(b["bbox"], frame.shape)
+            b_box = b["bbox"]
+            b_vis = self.estimate_visibility(b_box, frame.shape)
             best_face = None
-            max_iou = 0
+            max_coverage = 0
+            face_idx = -1
             
             for i, f in enumerate(faces):
                 if i in used_faces: continue
-                iou = self.compute_iou(b["bbox"], f["bbox"])
-                # Also check if face is nested
-                if iou > self.iou_merge_threshold:
-                    if iou > max_iou:
-                        max_iou = iou
-                        best_face = f
-                        face_idx = i
+                f_box = f["bbox"]
+                
+                # Compute Intersection / Face Area (Coverage)
+                # This is much more robust for face matching than standard IoU
+                x1 = max(b_box[0], f_box[0])
+                y1 = max(b_box[1], f_box[1])
+                x2 = min(b_box[2], f_box[2])
+                y2 = min(b_box[3], f_box[3])
+                
+                if x2 > x1 and y2 > y1:
+                    inter_area = (x2 - x1) * (y2 - y1)
+                    face_area = (f_box[2] - f_box[0]) * (f_box[3] - f_box[1])
+                    coverage = inter_area / max(1, face_area)
+                    
+                    if coverage > self.iou_merge_threshold: # Reuse this threshold (permissively)
+                        if coverage > max_coverage:
+                            max_coverage = coverage
+                            best_face = f
+                            face_idx = i
             
             det = {
                 "bbox": b["bbox"],

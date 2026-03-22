@@ -80,3 +80,85 @@
 [2026-03-22 23:18:15,276] [EMBEDDING] face_id=Track_94
 [2026-03-22 23:18:15,277] [RECOGNITION] face_id=person_8 score=0.5920
 [2026-03-22 23:18:15,283] [ENTRY] face_id=person_8 image=logs/entries/2026-03-22/person_8_20260322_174815_280111.jpg
+[2026-03-22 23:30:03,504] [EMBEDDING] face_id=Track_1
+[2026-03-22 23:30:03,523] [ENTRY] face_id=person_1 image=logs/entries/2026-03-22/person_1_20260322_180003_521291.jpg
+[2026-03-22 23:30:03,526] [RECOGNITION] face_id=person_1 score=0.9914
+[2026-03-22 23:30:03,528] [ENTRY] face_id=person_1 image=logs/entries/2026-03-22/person_1_20260322_180003_528519.jpg
+[2026-03-22 23:30:06,822] [EXIT] face_id=person_1 image=None
+[2026-03-22 23:30:07,167] [EXIT] face_id=person_1 image=None
+[2026-03-22 23:30:10,279] [EMBEDDING] face_id=Track_10
+[2026-03-22 23:30:10,290] [ENTRY] face_id=person_2 image=logs/entries/2026-03-22/person_2_20260322_180010_288579.jpg
+[2026-03-22 23:30:17,589] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180017_589717.jpg
+[2026-03-22 23:30:18,690] [ENTRY] face_id=person_4 image=logs/entries/2026-03-22/person_4_20260322_180018_689787.jpg
+[2026-03-22 23:30:19,068] [EMBEDDING] face_id=Track_27
+[2026-03-22 23:30:19,068] [RECOGNITION] face_id=person_4 score=0.9271
+[2026-03-22 23:30:19,072] [ENTRY] face_id=person_4 image=logs/entries/2026-03-22/person_4_20260322_180019_071162.jpg
+[2026-03-22 23:30:19,637] [RECOGNITION] face_id=person_3 score=0.4838
+[2026-03-22 23:30:19,641] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180019_640841.jpg
+[2026-03-22 23:30:21,014] [EMBEDDING] face_id=Track_30
+[2026-03-22 23:30:21,014] [RECOGNITION] face_id=person_3 score=0.6174
+[2026-03-22 23:30:21,019] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180021_017735.jpg
+[2026-03-22 23:30:21,588] [RECOGNITION] face_id=person_4 score=0.4384
+[2026-03-22 23:30:21,591] [ENTRY] face_id=person_4 image=logs/entries/2026-03-22/person_4_20260322_180021_591532.jpg
+[2026-03-22 23:30:21,594] [RECOGNITION] face_id=person_3 score=0.7151
+[2026-03-22 23:30:21,597] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180021_597588.jpg
+[2026-03-22 23:30:24,995] [RECOGNITION] face_id=person_4 score=0.6320
+[2026-03-22 23:30:24,998] [ENTRY] face_id=person_4 image=logs/entries/2026-03-22/person_4_20260322_180024_998205.jpg
+[2026-03-22 23:30:25,001] [RECOGNITION] face_id=person_3 score=0.5442
+[2026-03-22 23:30:25,004] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180025_004684.jpg
+[2026-03-22 23:30:28,645] [RECOGNITION] face_id=person_3 score=0.6298
+[2026-03-22 23:30:28,648] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180028_648439.jpg
+[2026-03-22 23:30:28,651] [RECOGNITION] face_id=person_4 score=0.6628
+[2026-03-22 23:30:28,653] [ENTRY] face_id=person_4 image=logs/entries/2026-03-22/person_4_20260322_180028_652964.jpg
+[2026-03-22 23:30:30,504] [RECOGNITION] face_id=person_3 score=0.6649
+[2026-03-22 23:30:30,509] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180030_508834.jpg
+[2026-03-22 23:30:32,230] [RECOGNITION] face_id=person_4 score=0.6867
+[2026-03-22 23:30:32,240] [ENTRY] face_id=person_4 image=logs/entries/2026-03-22/person_4_20260322_180032_240363.jpg
+[2026-03-22 23:30:35,888] [ENTRY] face_id=person_5 image=logs/entries/2026-03-22/person_5_20260322_180035_888261.jpg
+[2026-03-22 23:30:35,890] [RECOGNITION] face_id=person_3 score=0.5601
+[2026-03-22 23:30:35,892] [ENTRY] face_id=person_3 image=logs/entries/2026-03-22/person_3_20260322_180035_892277.jpg
+[2026-03-22 23:30:36,745] [RECOGNITION] face_id=person_4 score=0.7107
+[2026-03-22 23:30:36,749] [ENTRY] face_id=person_4 image=logs/entries/2026-03-22/person_4_20260322_180036_749125.jpg
+[2026-03-22 23:30:40,097] [EXIT] face_id=person_2 image=None
+[2026-03-22 23:30:40,097] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:41,416] [EXIT] face_id=person_4 image=None
+[2026-03-22 23:30:42,616] [RECOGNITION] face_id=person_5 score=0.6173
+[2026-03-22 23:30:42,620] [ENTRY] face_id=person_5 image=logs/entries/2026-03-22/person_5_20260322_180042_620581.jpg
+[2026-03-22 23:30:42,623] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:43,478] [RECOGNITION] face_id=person_5 score=0.6791
+[2026-03-22 23:30:43,486] [ENTRY] face_id=person_5 image=logs/entries/2026-03-22/person_5_20260322_180043_486519.jpg
+[2026-03-22 23:30:43,490] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:44,135] [EXIT] face_id=person_4 image=None
+[2026-03-22 23:30:45,269] [RECOGNITION] face_id=person_5 score=0.6418
+[2026-03-22 23:30:45,273] [ENTRY] face_id=person_5 image=logs/entries/2026-03-22/person_5_20260322_180045_272864.jpg
+[2026-03-22 23:30:46,016] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:46,544] [EXIT] face_id=person_4 image=None
+[2026-03-22 23:30:47,052] [ENTRY] face_id=person_6 image=logs/entries/2026-03-22/person_6_20260322_180047_051916.jpg
+[2026-03-22 23:30:47,995] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:50,237] [EXIT] face_id=person_4 image=None
+[2026-03-22 23:30:51,184] [EMBEDDING] face_id=Track_71
+[2026-03-22 23:30:51,184] [RECOGNITION] face_id=person_6 score=0.7582
+[2026-03-22 23:30:51,190] [ENTRY] face_id=person_6 image=logs/entries/2026-03-22/person_6_20260322_180051_187842.jpg
+[2026-03-22 23:30:53,391] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:54,193] [EXIT] face_id=person_4 image=None
+[2026-03-22 23:30:57,421] [RECOGNITION] face_id=person_6 score=0.7367
+[2026-03-22 23:30:57,425] [ENTRY] face_id=person_6 image=logs/entries/2026-03-22/person_6_20260322_180057_425243.jpg
+[2026-03-22 23:30:57,428] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:57,428] [EXIT] face_id=person_5 image=None
+[2026-03-22 23:30:57,428] [EXIT] face_id=person_3 image=None
+[2026-03-22 23:30:58,318] [EXIT] face_id=person_4 image=None
+[2026-03-22 23:30:58,318] [EXIT] face_id=person_4 image=None
+[2026-03-22 23:30:59,076] [EXIT] face_id=person_5 image=None
+[2026-03-22 23:30:59,206] [EXIT] face_id=person_5 image=None
+[2026-03-22 23:30:59,341] [EXIT] face_id=person_5 image=None
+[2026-03-22 23:30:59,557] [EXIT] face_id=person_6 image=None
+[2026-03-22 23:31:07,649] [EXIT] face_id=person_6 image=None
+[2026-03-22 23:31:10,482] [EMBEDDING] face_id=Track_93
+[2026-03-22 23:31:10,495] [ENTRY] face_id=person_7 image=logs/entries/2026-03-22/person_7_20260322_180110_492275.jpg
+[2026-03-22 23:31:10,553] [EXIT] face_id=person_6 image=None
+[2026-03-22 23:31:12,959] [EXIT] face_id=person_7 image=None
+[2026-03-22 23:31:21,007] [EMBEDDING] face_id=Track_97
+[2026-03-22 23:31:21,018] [ENTRY] face_id=person_8 image=logs/entries/2026-03-22/person_8_20260322_180121_016409.jpg
+[2026-03-22 23:31:21,722] [EMBEDDING] face_id=Track_94
+[2026-03-22 23:31:21,722] [RECOGNITION] face_id=person_8 score=0.5920
+[2026-03-22 23:31:21,731] [ENTRY] face_id=person_8 image=logs/entries/2026-03-22/person_8_20260322_180121_726255.jpg
