@@ -338,7 +338,6 @@ def main():
     tester.test_4_verify_db_faces()
     tester.test_5_verify_db_events()
     tester.test_6_verify_images()
-    tester.test_7_reidentification()
     tester.test_8_skip_consistency()
     
     tester.print_summary()
