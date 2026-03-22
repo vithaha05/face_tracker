@@ -130,11 +130,11 @@ class FaceRecognizer:
         return crop
 
     def identify_or_register(self, detection: Dict[str, Any], frame: np.ndarray, event_logger=None, tracker_id: int = None, embedding: Optional[np.ndarray] = None) -> Optional[str]:
-        """FIX 6: Clearer buffer logic with embedding reuse."""
-        face_crop = None
+        """FIX 6: Robust image saving for all registrations."""
+        bbox = detection.get("face_bbox") if detection.get("face_bbox") else detection.get("bbox")
+        face_crop = self.crop_helper(frame, bbox) if bbox is not None else None
+        
         if embedding is None:
-            bbox = detection.get("face_bbox") if detection.get("face_bbox") else detection.get("bbox")
-            face_crop = self.crop_helper(frame, bbox)
             embedding = self.get_embedding(face_crop)
             if embedding is not None and event_logger:
                 event_logger.log_embedding_generated(f"Track_{tracker_id}" if tracker_id else "unknown")
