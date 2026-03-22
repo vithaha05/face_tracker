@@ -9,20 +9,7 @@ from modules.database import Database
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("VisitorCounter")
 
-def load_config(config_path: str = "config.json") -> dict:
-    """
-    Reads the configuration file and returns a dictionary.
-    
-    :param config_path: Path to the config.json file.
-    :return: Configuration dictionary or empty dict if not found.
-    """
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to read config file: {e}")
-    return {}
+from modules.utils import load_config
 
 class VisitorCounter:
     """
@@ -71,20 +58,28 @@ class VisitorCounter:
             logger.warning(f"Failed to fetch unique count from DB, returning last known: {e}")
             return self.unique_count
 
-    def register_entry(self, face_id: str) -> bool:
+    def register_entry(self, face_id: str, image_path: Optional[str] = None) -> bool:
         """
         Records a new entry and increments the counter if the visitor is new.
         
         :param face_id: The identified face ID.
+        :param image_path: Optional path to the entry image.
         :return: True if this is a new unique visitor, False otherwise.
         """
-        if face_id in self.counted_faces:
-            return False
-            
-        self.counted_faces.add(face_id)
-        self.unique_count += 1
-        logger.info(f"New unique visitor: face_id={face_id}. Total: {self.unique_count}")
-        return True
+        # Always insert an entry event for transparency (or at least track it)
+        # However, we only increment the unique count if it's a NEW visitor
+        is_new = False
+        if face_id not in self.counted_faces:
+            self.counted_faces.add(face_id)
+            self.unique_count += 1
+            is_new = True
+            logger.info(f"New unique visitor: face_id={face_id}. Total: {self.unique_count}")
+        
+        # PERSIST the event to database regardless of whether it's 'new'
+        # so that get_unique_visitor_count() (DISTINCT face_id) works!
+        self.db.insert_event(face_id, "entry", image_path or "")
+        
+        return is_new
 
     def should_print(self, frame_number: int) -> bool:
         """

@@ -5,25 +5,11 @@ import time
 import os
 from datetime import datetime
 import numpy as np
+from modules.utils import load_config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("Database")
-
-def get_config(config_path: str = "config.json") -> dict:
-    """
-    Reads the configuration file and returns a dictionary.
-    
-    :param config_path: Path to the config.json file.
-    :return: Configuration dictionary or empty dict if not found.
-    """
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to read config file: {e}")
-    return {}
 
 class Database:
     """
@@ -35,7 +21,7 @@ class Database:
         
         :param config_path: Path to the configuration file to load the db_path from.
         """
-        config = get_config(config_path)
+        config = load_config(config_path)
         self.db_path = config.get("db_path", "faces_db/faces.db")
         self._initialize_db()
 

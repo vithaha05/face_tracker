@@ -1,216 +1,239 @@
-"""
-Face Tracker Pipeline Orchestration (Optimized with Tracker Trust)
---------------------------------------------------
-This script integrates detection, recognition, tracking, and logging into a single
-real-time pipeline. Optimized for stability and re-identification accuracy.
-"""
-
 import cv2
 import json
 import logging
 import os
 import sys
 import argparse
+import time
 from datetime import datetime
-import numpy as np
+from pathlib import Path
+from typing import List, Dict, Any, Tuple
 
-# Import custom modules from the modules folder
+# Add the project root to sys.path
+sys.path.append(str(Path(__file__).parent))
+
 from modules.detector import FaceDetector
 from modules.recognizer import FaceRecognizer
 from modules.tracker import FaceTracker
 from modules.logger import EventLogger
 from modules.visitor_counter import VisitorCounter
-from modules import database
+from modules.database import Database
+from modules.utils import load_config
 
-def load_config(config_path: str = "config.json") -> dict:
-    """Utility to load the central configuration file."""
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"CRITICAL: Failed to load config: {e}")
-            sys.exit(1)
-    return {}
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("Main")
+
+def draw_overlays(frame: cv2.Mat, active_tracks: List[Dict[str, Any]], unique_count: int, frame_number: int, pending_count: int):
+    # Stats Panel
+    panel_stats = [
+        f"Frame     : {frame_number}",
+        f"Tracked   : {len(active_tracks)}",
+        f"Unique    : {unique_count}",
+        f"Pending   : {pending_count}",
+    ]
+    y_offset = 30
+    for line in panel_stats:
+        cv2.putText(frame, line, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1)
+        y_offset += 22
+
+    for track_info in active_tracks:
+        face_id = track_info.get("face_id")
+        x1, y1, x2, y2 = track_info["bbox"]
+        
+        color = (0, 255, 0) if face_id else (0, 255, 255)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        label = f"ID: {face_id if face_id else 'Tracking...'}"
+        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+def run_frame_pipeline(frame, frame_number, detector, recognizer, tracker, event_logger, visitor_counter, config):
+    # Diagnostic counters
+    num_embeddings = 0
+    num_matches = 0
+    num_new_regs = 0
+    debug_mode = config.get("debug_mode", False)
+    
+    # ── Step 2: Detection ──
+    detections = detector.detect_all(frame)
+    num_raw_faces = len([d for d in detections if "face" in d["type"]])
+    num_raw_bodies = len([d for d in detections if "body" in d["type"]])
+    
+    embeddings = []
+    for det in detections:
+        emb = None
+        # Reuse optimization from previous step
+        if det.get("type") == "face" or det.get("face_bbox") is not None:
+            bbox = det.get("face_bbox") or det.get("bbox")
+            face_crop = detector.crop_face(frame, bbox)
+            if face_crop is not None:
+                emb = recognizer.get_embedding(face_crop)
+        
+        det["embedding"] = emb
+        embeddings.append(emb)
+        if emb is not None: num_embeddings += 1
+
+    # ── Step 3: Tracking ──
+    active_tracks = tracker.update(detections, embeddings, frame)
+        
+    # ── Step 4: Identity Resolution ──
+    current_tracker_ids = set()
+    for track_info in active_tracks:
+        t_id = track_info["tracker_id"]
+        current_tracker_ids.add(t_id)
+        
+        face_id = tracker.get_face_id(t_id)
+        if face_id is None:
+            best_d = None
+            max_iou = 0
+            for d in detections:
+                iou = detector.compute_iou(d["bbox"], track_info["bbox"])
+                if iou > 0.4 and iou > max_iou:
+                    max_iou = iou
+                    best_d = d
+            
+            if best_d:
+                cached_emb = best_d.get("embedding")
+                res_id = recognizer.identify_or_register(best_d, frame, tracker_id=t_id, embedding=cached_emb)
+                
+                if res_id:
+                    tracker.assign_face_id(t_id, res_id)
+                    final_bbox = best_d.get("face_bbox") or best_d["bbox"]
+                    crop_img = detector.crop_face(frame, final_bbox)
+                    crop_img_path = None
+                    if crop_img is not None:
+                        crop_img_path = event_logger.log_entry(res_id, crop_img)
+                    
+                    is_new = visitor_counter.register_entry(res_id, crop_img_path)
+                    if is_new:
+                        num_new_regs += 1
+                    else:
+                        num_matches += 1
+            
+    # ── Step 5: Exit Detection ──
+    exited_ids = tracker.check_exits(current_tracker_ids)
+    for exited_id in exited_ids:
+        event_logger.log_exit(exited_id, None)
+
+    if debug_mode:
+        msg = f"Frame {frame_number:04} | Raw YOLO (F/B): {num_raw_faces}/{num_raw_bodies} | Embeddings: {num_embeddings} | Matches/Reg: {num_matches}/{num_new_regs} | Total Unique: {visitor_counter.get_unique_count()}"
+        print(msg)
+
+    return detections, active_tracks
 
 def main():
-    parser = argparse.ArgumentParser(description="Single-Source Face Tracking Pipeline")
-    parser.add_argument("--source", type=str, help="Override video source (file path or RTSP URL)")
-    parser.add_argument("--reset-db", action="store_true", help="Drops and recreates all DB tables before starting")
+    parser = argparse.ArgumentParser(description="High-Performance Face Tracker")
+    parser.add_argument("--source", type=str, help="Video file or RTSP URL")
+    parser.add_argument("--fast", action="store_true", help="Disable display for maximum speed")
+    parser.add_argument("--reset-db", action="store_true", help="Reset DB before running")
     args = parser.parse_args()
 
-    # Initialize logging
-    logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(message)s')
-    logger = logging.getLogger("Main")
-    
+    # ── Step 1: Initialization ──
     config = load_config()
-    source = args.source if args.source else config.get("video_source", "data/sample.mp4")
+    db_path = config.get("db_path", "faces_db/faces.db")
     
-    # Block directory/batch processing
-    if isinstance(source, str) and os.path.isdir(source):
-        print(f"Error: batch processing not supported. Please provide a single video file or RTSP URL.")
-        sys.exit(1)
+    if args.fast:
+        config["display_output"] = False
+        # Do not override target_process_fps here, use the one from config.json
+        config["debug_mode"] = False
+        logger.info("FAST MODE enabled: display disabled, debug logs off.")
 
-    # Module Initialization
-    try:
-        db = database.Database()
-        if args.reset_db:
-             logger.warning("RESET-DB flag detected. Clearing all data...")
-             db.clear_database()
-
-        detector = FaceDetector()
-        recognizer = FaceRecognizer()
-        tracker = FaceTracker()
-        event_logger = EventLogger()
-        visitor_counter = VisitorCounter()
+    if args.reset_db:
+        logger.warning("RESET-DB flag detected. Clearing all data...")
+        db = Database(db_path)
+        db.clear_database()
+        import shutil
+        if os.path.exists("faces_db/face_images"):
+            shutil.rmtree("faces_db/face_images")
+        db.close()
         
-        logger.info(f"Pipeline starting with source: {source}")
-        logger.info(f"Re-ID fixes active: threshold={config.get('similarity_threshold', 0.5)}, "
-                    f"multi-embedding=True, confirmation_frames={config.get('embedding_confirmation_frames', 5)}, "
-                    f"tracker_trust={config.get('tracker_trust_enabled', True)}")
-        
-    except Exception as e:
-        logger.error(f"Module initialization failed: {e}")
-        sys.exit(1)
-
-    cap = cv2.VideoCapture(source)
+    detector = FaceDetector()
+    recognizer = FaceRecognizer()
+    tracker = FaceTracker()
+    event_logger = EventLogger()
+    visitor_counter = VisitorCounter()
+    
+    source = args.source if args.source else config.get("video_source", "0")
+    cap = cv2.VideoCapture(0 if source == "0" else source)
     if not cap.isOpened():
-        logger.error(f"Failed to open video source: {source}")
-        sys.exit(1)
+        logger.error(f"Cannot open video source: {source}")
+        return
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    logger.info(f"Stream opened: {width}x{height} @ {fps}fps")
+    # Video Properties
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    # FIX 1: Auto-calculate frame skip
+    target_process_fps = config.get("target_process_fps", 5)
+    computed_frame_skip = max(1, int(video_fps / target_process_fps))
+    
+    # FIX 3: Auto-recalibrate exit_timeout based on computed frame_skip
+    # We want ~2 real seconds of absence before exit triggers
+    real_seconds_for_exit = config.get("exit_timeout_seconds", 2)
+    config["exit_timeout_frames"] = max(5, int(real_seconds_for_exit * target_process_fps))
+    
+    # FIX 5: Enhanced Startup Log
+    logger.info(f"Video: {frame_w}x{frame_h} @ {video_fps}fps | Processing at {config.get('detection_width', 1280)}px width")
+    logger.info(f"Frame skip: every {computed_frame_skip} frames | Processing {target_process_fps}fps of {video_fps}fps")
+    logger.info(f"Total frames to process: ~{int(total_frames/computed_frame_skip) if total_frames > 0 else 'Stream'}")
+    logger.info(f"Exit timeout: {config['exit_timeout_frames']} processed frames ({real_seconds_for_exit}s real time)")
+
+    display_output = config.get("display_output", True)
+    
     frame_number = 0
+    last_active_tracks = []
     last_detections = []
-    last_known_crops = {} 
+    start_time = time.time()
     
     try:
         while True:
+            # FIX 2: Separate reading from processing
             ret, frame = cap.read()
             if not ret:
-                logger.info("End of video stream or failed to read frame.")
                 break
 
-            try:
-                # ── Step 1: Detection ──
-                if detector.should_detect(frame_number):
-                    detections = detector.detect_faces(frame)
-                    last_detections = detections
-                else:
-                    detections = last_detections
+            # Only run heavy pipeline every computed_frame_skip frames
+            if frame_number % computed_frame_skip == 0:
+                last_detections, last_active_tracks = run_frame_pipeline(
+                    frame, frame_number, detector, recognizer, tracker, event_logger, visitor_counter, config
+                )
 
-                # ── Step 2: Recognition (Conditioned on Tracker Trust) ──
-                # We need to map detections to tracks first or use current tracks
-                # In this pipeline, we pass embeddings into tracker.update()
-                # To implement 'Tracker Trust', we only run recognizer for UNMAPPED tracker IDs.
-                # However, tracker.update() needs the embedding of the CURRENT frame to associate.
-                # FIX 5: We run recognition once. If we already trust a track, we just use its ID.
-                
-                embeddings = []
-                # First, we need to extract embeddings for the tracker to work
-                # Optimization: We still need embeddings for EVERY detection to feed into DeepSort.update_tracks
-                for det in detections:
-                    face_crop = detector.crop_face(frame, det["bbox"])
-                    emb = recognizer.get_embedding(face_crop)
-                    embeddings.append(emb)
+            # FIX 4: Progress Bar for files
+            if total_frames > 0 and frame_number % (computed_frame_skip * 10) == 0:
+                frames_to_process = total_frames // computed_frame_skip
+                processed = frame_number // computed_frame_skip
+                percent = (frame_number / total_frames) * 100
+                elapsed = time.time() - start_time
+                eta = (elapsed / max(frame_number, 1)) * (total_frames - frame_number)
+                sys.stdout.write(f"\rProgress: {percent:.1f}% | Frame {frame_number}/{total_frames} | "
+                      f"Processed: {processed}/{frames_to_process} | "
+                      f"Unique: {visitor_counter.get_unique_count()} | "
+                      f"ETA: {eta:.0f}s")
+                sys.stdout.flush()
 
-                # Filter valid
-                valid_idx = [i for i, emb in enumerate(embeddings) if emb is not None]
-                tracker_dets = [detections[i] for i in valid_idx]
-                tracker_embs = [embeddings[i] for i in valid_idx]
-
-                # ── Step 3: Tracking Update ──
-                active_tracks = tracker.update(tracker_dets, tracker_embs, frame)
-                
-                # ── Step 4: Identity Resolution (FIX 5: Tracker Trust) ──
-                current_tracker_ids = set()
-                for track in active_tracks:
-                    tracker_id = track["tracker_id"]
-                    current_tracker_ids.add(tracker_id)
-                    
-                    # Check if tracker already knows this person's Face ID
-                    existing_face_id = tracker.get_face_id(tracker_id)
-                    
-                    if existing_face_id and config.get("tracker_trust_enabled", True):
-                        face_id = existing_face_id
-                    else:
-                        # NEW TRACK or UNKNOWN: Run full recognition logic
-                        # We need the crop from the frame
-                        face_crop = detector.crop_face(frame, track["bbox"])
-                        face_id = recognizer.identify_or_register(face_crop, tracker_id=tracker_id)
-                        
-                        if face_id:
-                            # Map it so we can trust it next time
-                            tracker.assign_face_id(tracker_id, face_id)
-                        else:
-                            # Still unconfirmed (Fix 4)
-                            continue
-
-                    # If we reach here, we have a valid face_id
-                    track["face_id"] = face_id # Update for visualization
-                    track_crop = detector.crop_face(frame, track["bbox"])
-                    last_known_crops[face_id] = track_crop
-                    
-                    # Log entry if first time seeing this tracker_id
-                    if not hasattr(tracker, '_logged_entries'): tracker._logged_entries = set()
-                    if tracker_id not in tracker._logged_entries:
-                        image_path = event_logger.log_entry(face_id, track_crop)
-                        db.insert_event(face_id, "entry", image_path)
-                        visitor_counter.register_entry(face_id)
-                        tracker._logged_entries.add(tracker_id)
-
-                # ── Step 5: Exit events ──
-                exited_face_ids = tracker.check_exits(current_tracker_ids)
-                for face_id in exited_face_ids:
-                    last_crop = last_known_crops.get(face_id)
-                    image_path = event_logger.log_exit(face_id, last_crop)
-                    db.insert_event(face_id, "exit", image_path)
-                    if face_id in last_known_crops: del last_known_crops[face_id]
-
-                # ── Step 6: Console Feedback ──
-                if visitor_counter.should_print(frame_number):
-                    visitor_counter.print_count()
-
-                # ── Step 7: Visualization ──
-                for track in active_tracks:
-                    x1, y1, x2, y2 = track["bbox"]
-                    face_id = track.get("face_id", "Scanning...")
-                    conf = track.get("confidence", 0.0)
-                    color = (0, 255, 0) if face_id != "Scanning..." else (0, 165, 255)
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                    cv2.putText(frame, f"ID: {face_id}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-                cv2.putText(frame, f"Unique Visitors: {visitor_counter.unique_count}", (10, 30), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-
-                if config.get("display_output", True):
-                    cv2.imshow("Face Tracker", frame)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        logger.info("Quit key pressed. Shutting down.")
-                        break
-
-            except Exception as e:
-                logger.error(f"Error processing frame {frame_number}: {e}")
+            # Step 6: Visualization (Always draw for smoothness)
+            if display_output:
+                display_frame = frame.copy()
+                draw_overlays(display_frame, last_active_tracks, visitor_counter.get_unique_count(), frame_number, len(recognizer.unconfirmed_faces))
+                cv2.imshow("Face Tracker", display_frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
 
             frame_number += 1
-
+            
     except KeyboardInterrupt:
-        logger.info("Interrupted. Shutting down.")
+        print("\nInterrupted by user.")
     finally:
         cap.release()
         cv2.destroyAllWindows()
+        # Fix: Don't pass db_path as config_path
+        db = Database()
         db.close()
-        summary = visitor_counter.get_summary()
-        logger.info(f"Pipeline stopped. Final summary: {summary}")
         
-        print("\n── Session Complete ──")
-        print(f"Unique Visitors : {summary['unique_visitors']}")
-        print(f"Face IDs Seen   : {len(summary['counted_face_ids'])}")
-        print(f"Ended at        : {summary['last_updated']}")
-        print("──────────────────────\n")
+        print("\n\n── Final Diagnostics ──")
+        print(f"Total Unique Visitors : {visitor_counter.get_unique_count()}")
+        print("─────────────────────")
 
 if __name__ == "__main__":
     main()

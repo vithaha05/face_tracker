@@ -9,20 +9,7 @@ from deep_sort_realtime.deepsort_tracker import DeepSort
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("FaceTracker")
 
-def load_config(config_path: str = "config.json") -> dict:
-    """
-    Reads the configuration file and returns a dictionary.
-    
-    :param config_path: Path to the config.json file.
-    :return: Configuration dictionary or empty dict if not found.
-    """
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to read config file: {e}")
-    return {}
+from modules.utils import load_config
 
 class FaceTracker:
     """
@@ -80,6 +67,13 @@ class FaceTracker:
             height = bottom - top
             # Use provided face_id as label if available, otherwise "face"
             label = face_ids[i] if (face_ids is not None and face_ids[i]) else "face"
+            
+            # Fix: Ensure embedding is NOT None and valid for DeepSort
+            if emb is None:
+                # Use a small constant vector and normalize it to avoid div-by-zero
+                emb = np.ones(512, dtype=np.float32) * 0.01
+                emb = emb / np.linalg.norm(emb)
+                
             ds_input.append(([left, top, width, height], det["confidence"], label))
             ds_embeds.append(emb)
             
