@@ -118,8 +118,8 @@ class PipelineTester:
                     # Tracker Trust
                     fid = tracker.get_face_id(tracker_id)
                     if not fid:
-                        crop = detector.crop_face(frame, track["bbox"])
-                        fid = recognizer.identify_or_register(crop, tracker_id=tracker_id)
+                        # SYNC: Match new signature (detection, frame, event_logger, tracker_id, embedding)
+                        fid = recognizer.identify_or_register(track, frame, event_logger=event_logger, tracker_id=tracker_id)
                         if fid:
                             tracker.assign_face_id(tracker_id, fid)
                     
@@ -131,7 +131,6 @@ class PipelineTester:
                         if not hasattr(tracker, '_logged'): tracker._logged = set()
                         if tracker_id not in tracker._logged:
                             event_logger.log_entry(fid, crop)
-                            db_inst.insert_event(fid, "entry", "test_path")
                             visitor_counter.register_entry(fid)
                             tracker._logged.add(tracker_id)
                             stats["entries"] += 1
@@ -139,7 +138,6 @@ class PipelineTester:
                 exits = tracker.check_exits(cur_ids)
                 for fid in exits:
                     event_logger.log_exit(fid, last_known_crops.get(fid))
-                    db_inst.insert_event(fid, "exit", "test_path")
                     stats["exits"] += 1
 
                 frame_number += 1
@@ -280,27 +278,30 @@ class PipelineTester:
         except Exception as e:
             self.results.append(TestResult(name, False, str(e)))
 
-    def test_7_reidentification(self):
-        name = "Re-identification stability"
+    def test_8_skip_consistency(self):
+        name = "Consistency across skip rates"
         if self.quick:
-             self.results.append(TestResult(name, True, "Skipped"))
-             return
+            self.results.append(TestResult(name, True, "Skipped"))
+            return
             
-        db_path = self.config.get("db_path", "faces_db/faces.db")
-        conn = sqlite3.connect(db_path)
-        count_before = conn.execute("SELECT COUNT(DISTINCT id) FROM faces").fetchone()[0]
-        conn.close()
-        
-        success, res = self.run_pipeline(num_frames=50) # Small re-run
-        
-        conn = sqlite3.connect(db_path)
-        count_after = conn.execute("SELECT COUNT(DISTINCT id) FROM faces").fetchone()[0]
-        conn.close()
-        
-        if count_after > count_before:
-             self.results.append(TestResult(name, False, f"ID Flip detected: {count_after} vs {count_before}"))
-        else:
-             self.results.append(TestResult(name, True, f"Stable identity count: {count_after}"))
+        try:
+            counts = []
+            for skip in [1, 3, 5]:
+                 self.reset_system()
+                 success, res = self.run_pipeline(num_frames=100, frame_skip=skip)
+                 if success:
+                     counts.append(len(res["faces"]))
+            
+            if not counts:
+                 raise Exception("Failed to run skip tests")
+                 
+            # Allow for some jitter but should be globally similar
+            if max(counts) - min(counts) > 2:
+                 self.results.append(TestResult(name, False, f"Counts varied too much: {counts}"))
+            else:
+                 self.results.append(TestResult(name, True, f"Consistent: {counts} at skips [1,3,5]"))
+        except Exception as e:
+            self.results.append(TestResult(name, False, str(e)))
 
     def print_summary(self):
         print("\n══════════════════════════════════════")
@@ -338,6 +339,7 @@ def main():
     tester.test_5_verify_db_events()
     tester.test_6_verify_images()
     tester.test_7_reidentification()
+    tester.test_8_skip_consistency()
     
     tester.print_summary()
 

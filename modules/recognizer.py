@@ -48,31 +48,38 @@ class FaceRecognizer:
             logger.error(f"Failed to load embeddings: {e}")
 
     def get_embedding(self, face_crop: np.ndarray) -> Optional[np.ndarray]:
-        """FIX 3: Multiple fallbacks."""
+        """FIX 3: 4-stage fallback (direct -> padded -> 112 -> 160)."""
         if face_crop is None or face_crop.size == 0:
             return None
         
-        # Fallback 1: Ensure min size
+        # Ensure min size for robust detection
         h, w = face_crop.shape[:2]
         if h < 112 or w < 112:
             face_crop = cv2.resize(face_crop, (112, 112))
 
-        # Direct
+        # Stage 1: Direct
         faces = self.app.get(face_crop)
         if faces:
             emb = faces[0].embedding
             return emb / np.linalg.norm(emb)
 
-        # Fallback: Padded
+        # Stage 2: Padded (InsightFace often likes context)
         padded = cv2.copyMakeBorder(face_crop, 40, 40, 40, 40, cv2.BORDER_REPLICATE)
         faces = self.app.get(padded)
         if faces:
             emb = faces[0].embedding
             return emb / np.linalg.norm(emb)
 
-        # Fallback: Resize
-        resized = cv2.resize(face_crop, (160, 160))
-        faces = self.app.get(resized)
+        # Stage 3: Resized 112x112 (InsightFace standard)
+        res112 = cv2.resize(face_crop, (112, 112))
+        faces = self.app.get(res112)
+        if faces:
+            emb = faces[0].embedding
+            return emb / np.linalg.norm(emb)
+            
+        # Stage 4: Resized 160x160 (Alternative standard)
+        res160 = cv2.resize(face_crop, (160, 160))
+        faces = self.app.get(res160)
         if faces:
             emb = faces[0].embedding
             return emb / np.linalg.norm(emb)
@@ -122,19 +129,23 @@ class FaceRecognizer:
             crop = cv2.resize(crop, (112, 112))
         return crop
 
-    def identify_or_register(self, detection: Dict[str, Any], frame: np.ndarray, tracker_id: int = None, embedding: Optional[np.ndarray] = None) -> Optional[str]:
+    def identify_or_register(self, detection: Dict[str, Any], frame: np.ndarray, event_logger=None, tracker_id: int = None, embedding: Optional[np.ndarray] = None) -> Optional[str]:
         """FIX 6: Clearer buffer logic with embedding reuse."""
         face_crop = None
         if embedding is None:
             bbox = detection.get("face_bbox") if detection.get("face_bbox") else detection.get("bbox")
             face_crop = self.crop_helper(frame, bbox)
             embedding = self.get_embedding(face_crop)
+            if embedding is not None and event_logger:
+                event_logger.log_embedding_generated(f"Track_{tracker_id}" if tracker_id else "unknown")
         
         if embedding is None:
             return None
             
         match_id, score = self.match_face(embedding)
         if match_id:
+            if event_logger:
+                event_logger.log_face_recognized(match_id, score)
             self.update_embedding(match_id, embedding)
             return match_id
             

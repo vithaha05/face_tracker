@@ -93,7 +93,7 @@ def run_frame_pipeline(frame, frame_number, detector, recognizer, tracker, event
             
             if best_d:
                 cached_emb = best_d.get("embedding")
-                res_id = recognizer.identify_or_register(best_d, frame, tracker_id=t_id, embedding=cached_emb)
+                res_id = recognizer.identify_or_register(best_d, frame, event_logger=event_logger, tracker_id=t_id, embedding=cached_emb)
                 
                 if res_id:
                     tracker.assign_face_id(t_id, res_id)

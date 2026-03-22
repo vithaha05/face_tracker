@@ -90,6 +90,16 @@ class EventLogger:
         self.sys_logger.info(f"New face registered: face_id={face_id}")
         self.event_logger.info(f"[REGISTRATION] face_id={face_id}")
 
+    def log_embedding_generated(self, face_id: str) -> None:
+        """Logs that a face embedding was generated."""
+        self.sys_logger.debug(f"Embedding generated for face_id={face_id}")
+        self.event_logger.info(f"[EMBEDDING] face_id={face_id}")
+
+    def log_face_recognized(self, face_id: str, score: float) -> None:
+        """Logs a successful face recognition match."""
+        self.sys_logger.debug(f"Face recognized: face_id={face_id} score={score:.4f}")
+        self.event_logger.info(f"[RECOGNITION] face_id={face_id} score={score:.4f}")
+
     def log_system_event(self, message: str, level: str = "info") -> None:
         """General purpose log."""
         lvl = level.lower()
