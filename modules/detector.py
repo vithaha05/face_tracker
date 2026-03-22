@@ -102,7 +102,7 @@ class FaceDetector:
             logger.error(f"Error during face detection inference: {e}")
             return []
 
-    def crop_face(self, frame: np.ndarray, bbox: list[int], padding: int = 10) -> np.ndarray:
+    def crop_face(self, frame: np.ndarray, bbox: list[int], padding: int = 20) -> np.ndarray:
         """
         Crops a face from the frame based on a bbox with optional padding.
         

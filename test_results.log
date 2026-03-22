@@ -1,0 +1,10 @@
+[2026-03-22 15:19:37,816] [INFO] Resetting system data (DB and logs)...
+[2026-03-22 15:19:37,816] [INFO] Deleted DB: faces_db/faces.db
+[2026-03-22 15:19:37,817] [INFO] Deleted log dir: logs
+[2026-03-22 15:24:30,429] [INFO] RESULT: PASS - Video file readable: Video opened: 2688x1520 @ 25.033333333333335fps
+[2026-03-22 15:24:30,429] [INFO] RESULT: PASS - Pipeline runs 300 frames: Ran 300 frames. Entries: 10, Exits: 0, Faces: 1
+[2026-03-22 15:24:30,429] [INFO] RESULT: PASS - events.log format correct: Verified: 10 entries, 0 exits
+[2026-03-22 15:24:30,429] [INFO] RESULT: PASS - DB embeddings table valid: Verified 10 embeddings, all valid vectors
+[2026-03-22 15:24:30,429] [INFO] RESULT: PASS - DB events table valid: Verified 10 events recorded
+[2026-03-22 15:24:30,429] [INFO] RESULT: PASS - Images saved correctly: Found 10 saved face crops
+[2026-03-22 15:24:30,429] [INFO] RESULT: PASS - Re-identification stability: Stable identity count: 1

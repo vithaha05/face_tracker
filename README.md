@@ -1,13 +1,17 @@
 # Real-Time Face Tracker & Unique Visitor Counter
 
-A production-grade face tracking pipeline designed for counting unique visitors in video streams or live camera feeds. This system integrates multiple AI models to provide robust detection, recognition, and long-term identity tracking.
+A production-grade face tracking pipeline designed for counting unique visitors in video streams or live camera feeds. This system integrates multiple AI models and advanced Re-ID strategies to provide robust detection, long-term identity tracking, and accurate counting.
 
 ## 🚀 Key Features
-- **Accurate Detection**: Optimized YOLOv8-Face for high-sensitivity detection (picks up all 3 faces in samples).
-- **Persistent Re-ID**: InsightFace (buffalo_l) embeddings stored in SQLite to remember returning visitors.
+- **Accurate Detection**: Optimized YOLOv8-Face (Nano) for high-sensitivity detection.
+- **Persistent Re-ID (Fix 1-5)**: 
+    - **Multi-Embedding Storage**: Remembers faces from different angles.
+    - **Online Profile Updates**: Refines identities in real-time.
+    - **Confirmation Buffer**: Prevents ghost tracking and false positives.
+    - **Tracker Trust**: Minimizes heavy inference by trusting temporal persistence.
 - **Robust Tracking**: DeepSort integration for multi-object tracking across occlusions.
 - **Auto-Logging**: Automatic face cropping and event logging for entries and exits.
-- **Dual Pipeline**: Supports local MP4 file processing and RTSP camera streams.
+- **Database Persistence**: SQLite powered for fast, zero-config data storage.
 
 ---
 
@@ -25,7 +29,7 @@ graph TD
     E --> F[SQLite Database]
     E --> G[Structured Log Files]
     E --> H[VisitorCounter]
-    H --> I[Live Dashboard Overlay]
+    H --> I[Live Console Feedback]
 ```
 
 ---
@@ -53,56 +57,53 @@ pip install -r requirements.txt
 
 ### 3. Usage
 - **To run on sample file**: Move your video to `data/sample.mp4` and run `python3 main.py`.
-- **To run on your camera**: Run `python3 main.py --source 0`.
-- **To run on RTSP stream**: Run `python3 main.py --source "rtsp://..."`.
-- **To run verification suite**: Run `python3 test_pipeline.py --quick`.
+- **To run with a custom source**: `python3 main.py --source path/to/video.mp4`.
+- **To reset the database**: `python3 main.py --reset-db`.
+- **To run the unit-test suite**: `python3 test_pipeline.py --reset`.
 
 ---
 
 ## ⚙️ Configuration (`config.json`)
-The current high-accuracy parameters tuned for this project:
+The following parameters are tuned for maximum Re-ID stability:
 ```json
 {
   "yolo_model_path": "yolov8n-face.pt",
-  "similarity_threshold": 0.35,
+  "similarity_threshold": 0.5,
+  "embedding_confirmation_frames": 5,
+  "max_embeddings_per_face": 5,
+  "tracker_trust_enabled": true,
   "detection_confidence": 0.3,
   "frame_skip": 3,
-  "exit_timeout_frames": 300,
   "db_path": "faces_db/faces.db"
 }
 ```
-- **Face Similarity Value**: `0.35` (Lowered to aggressively re-identify individuals and prevent double-counting).
-- **Detection Confidence**: `0.3` (Increased sensitivity to ensure all faces in a group are detected).
 
 ---
 
 ## 📐 AI Planning & Compute Load Estimates
 
 ### AI Planning Strategy
-1. **Hybrid Inference**: Detection and Recognition run only every 3rd frame (configurable via `frame_skip`) to save power, while the **Kalman Filter** (Tracker) runs on every frame to maintain smooth trajectories.
-2. **Asynchronous I/O**: Event logging and database writes are handled outside the critical visualization loop to prevent frame stutter.
-3. **Identity Memory**: Embeddings are 512-dimensional vectors. A database of 10,000 unique faces takes only ~20MB, making it extremely lightweight for mobile deployment.
+1. **Hybrid Inference**: Detection and Recognition run only every 3rd frame (configurable) to save power, while the **Kalman Filter** (Tracker) runs on every frame to maintain smooth trajectories.
+2. **Online Learning**: The system continuously refines a person's average embedding using a moving average, allowing for adaptation to changing lighting or partial occlusions.
+3. **Multi-Template Matching**: We store up to 5 varied embeddings per person, checking all of them to find the best match score, significantly reducing "ID flips."
 
 ### Compute Load (Estimated for MacBook Air M1/M2)
 | Module | CPU Load | Latency (ms) | Notes |
 | :--- | :--- | :--- | :--- |
-| **YOLO-Face (Detect)** | 30-40% | ~25ms | Runs once per 3 frames |
-| **InsightFace (Recognize)** | 50-60% | ~80ms per face | Linear with number of faces |
-| **DeepSort (Track)** | 10-15% | ~5ms | Constant time overhead |
-| **Total System** | ~75% Avg | ~10FPS (CPU) | Optimal for 1-3 people |
-
----
-
-## 📝 Assumptions & Limitations
-- **Lighting**: Recognition works best in ambient lighting where face landmarks are visible.
-- **Privacy**: The system crops only face regions for audit logging, ensuring the rest of the frame context is protected.
-- **Single Process**: Optimized for single-node execution.
+| **YOLO-Face (Detect)** | ~35% | ~25ms | Runs once per 3 frames |
+| **InsightFace (Recognize)** | ~60% | ~80ms per face | Linear with number of faces |
+| **DeepSort (Track)** | ~10% | ~5ms | Time-stable overhead |
+| **Total System** | ~75% Avg | 10-15 FPS | Optimized for real-time walk-bys |
 
 ---
 
 ## 🎬 Project Demo
-**Watch the Loom Demo**: [Add your Loom/YouTube link here]
+Watch the technical walk-through and demo here:
+[Loom/YouTube Demo Link Placeholder](https://example.com/demo)
 
 ---
 
-This project is a part of a hackathon run by https://katomaran.com
+### 📝 Hackathon Submission Details
+This project is a part of a hackathon run by [Katomaran](https://katomaran.com). 
+
+**Submitted before 12 PM Monday March 23rd.**

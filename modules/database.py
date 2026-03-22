@@ -72,6 +72,17 @@ class Database:
                         embedding BLOB
                     )
                 """)
+
+                # FIX 2: Create embeddings table for multi-embedding support
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS embeddings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        face_id TEXT NOT NULL,
+                        embedding BLOB NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (face_id) REFERENCES faces(id)
+                    )
+                """)
                 
                 # Create events table
                 conn.execute("""
@@ -84,6 +95,19 @@ class Database:
                         FOREIGN KEY (face_id) REFERENCES faces(id)
                     )
                 """)
+
+                # Migration: if embeddings is empty but faces has rows, migrate them
+                count = conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+                if count == 0:
+                    faces = conn.execute("SELECT id, embedding FROM faces").fetchall()
+                    if faces:
+                        logger.info(f"Migrating {len(faces)} existing embeddings to new table.")
+                        for face in faces:
+                            conn.execute(
+                                "INSERT INTO embeddings (face_id, embedding) VALUES (?, ?)",
+                                (face['id'], face['embedding'])
+                            )
+                
                 conn.commit()
             logger.info("Database initialized successfully.")
         except sqlite3.Error as e:
@@ -163,29 +187,56 @@ class Database:
             logger.error(f"Failed to get unique visitor count: {e}")
             return 0
 
-    def get_all_embeddings(self) -> list[dict]:
+    def get_all_embeddings(self) -> dict:
         """
-        Returns all rows from the faces table. Deserializes embeddings using np.frombuffer.
-        
-        :return: A list of dictionaries containing 'id' and 'embedding' (numpy.ndarray).
+        FIX 2: Retrieves all embeddings grouped by face_id from the embeddings table.
+        :return: { face_id: [embedding1, embedding2, ...] }
         """
-        results = []
         try:
             with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT id, embedding FROM faces")
-                rows = cursor.fetchall()
-                
+                rows = conn.execute("SELECT face_id, embedding FROM embeddings").fetchall()
+                result = {}
                 for row in rows:
-                    embedding = np.frombuffer(row["embedding"], dtype=np.float32)
-                    results.append({
-                        "id": row["id"],
-                        "embedding": embedding
-                    })
-            return results
+                    fid = row['face_id']
+                    emb = np.frombuffer(row['embedding'], dtype=np.float32)
+                    if fid not in result:
+                        result[fid] = []
+                    result[fid].append(emb)
+                return result
         except sqlite3.Error as e:
-            logger.error(f"Failed to retrieve embeddings: {e}")
-            return []
+            logger.error(f"Failed to get_all_embeddings: {e}")
+            return {}
+
+    def insert_embedding(self, face_id: str, embedding: np.ndarray) -> bool:
+        """
+        FIX 2 & 3: Inserts a new embedding for an existing face ID.
+        """
+        embedding_blob = embedding.tobytes()
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "INSERT INTO embeddings (face_id, embedding) VALUES (?, ?)",
+                    (face_id, sqlite3.Binary(embedding_blob))
+                )
+                conn.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Failed to insert_embedding for {face_id}: {e}")
+            return False
+
+    def clear_database(self):
+        """
+        FOR RESET-DB: Drops and recreates all tables.
+        """
+        try:
+            with self._get_connection() as conn:
+                conn.execute("DROP TABLE IF EXISTS events")
+                conn.execute("DROP TABLE IF EXISTS embeddings")
+                conn.execute("DROP TABLE IF EXISTS faces")
+            self._initialize_db()
+            logger.info("Database has been reset completely.")
+        except sqlite3.Error as e:
+            logger.error(f"Failed to reset database: {e}")
 
     def get_all_visitor_ids(self) -> list[str]:
         """

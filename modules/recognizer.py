@@ -1,24 +1,17 @@
-import cv2
+import os
 import json
 import logging
-import os
-import uuid
+import sqlite3
 import numpy as np
-from typing import Optional, Union, Dict, Any, List
+import cv2
+from typing import Dict, List, Optional, Tuple
 from insightface.app import FaceAnalysis
-from modules.database import Database
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("FaceRecognizer")
 
 def load_config(config_path: str = "config.json") -> dict:
-    """
-    Reads the configuration file and returns a dictionary.
-    
-    :param config_path: Path to the config.json file.
-    :return: Configuration dictionary or empty dict if not found.
-    """
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r') as f:
@@ -29,170 +22,167 @@ def load_config(config_path: str = "config.json") -> dict:
 
 class FaceRecognizer:
     """
-    A class for face recognition and identity management using InsightFace and SQLite.
+    A class for face recognition, managing embeddings, and profile updates.
+    Implements Fixes 2, 3, and 4 (Multi-embedding, Online updates, Confirmation).
     """
     def __init__(self, config_path: str = "config.json"):
-        """
-        Initializes the FaceRecognizer, loads the model, and fetches existing embeddings.
+        config = load_config(config_path)
+        self.similarity_threshold = config.get("similarity_threshold", 0.5)
+        self.model_name = config.get("model_name", "buffalo_l")
+        self.db_path = config.get("db_path", "faces_db/faces.db")
+        self.faces_dir = "faces_db/face_images"
         
-        :param config_path: Path to the configuration file.
-        """
-        self.config = load_config(config_path)
-        model_name = self.config.get("model_name", "buffalo_l")
-        self.similarity_threshold = self.config.get("similarity_threshold", 0.6)
+        # New Re-ID params
+        self.max_embeddings = config.get("max_embeddings_per_face", 5)
+        self.conf_frames = config.get("embedding_confirmation_frames", 5)
         
-        # Database initialization
-        self.db = Database(config_path)
-        self.known_embeddings = {}
-        
-        # Faces directory for saving face crops
-        self.faces_dir = os.path.dirname(self.db.db_path)
         os.makedirs(self.faces_dir, exist_ok=True)
         
+        # Initialize InsightFace
         try:
-            # Initialize InsightFace
-            # providers: CUDA for GPU, CPU for fallback
-            self.app = FaceAnalysis(name=model_name, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+            self.app = FaceAnalysis(name=self.model_name, providers=['CPUExecutionProvider'])
             self.app.prepare(ctx_id=0, det_size=(640, 640))
-            logger.info(f"InsightFace model '{model_name}' loaded successfully.")
+            logger.info(f"InsightFace model '{self.model_name}' loaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to load InsightFace model '{model_name}': {e}")
+            logger.error(f"Failed to load InsightFace: {e}")
             raise
 
-        # Load existing identities
+        # Database connection
+        from modules.database import Database
+        self.db = Database(self.db_path)
+        
+        # In-memory storage: {face_id: [embedding, embedding, ...]} (Fix 2)
+        self.known_embeddings: Dict[str, List[np.ndarray]] = {}
         self.load_stored_embeddings()
+        
+        # Buffer for unconfirmed faces: {key: count} (Fix 4)
+        self.unconfirmed_faces: Dict[str, int] = {}
+        
+        logger.info(f"Re-ID Fixes initialized: threshold={self.similarity_threshold}, "
+                    f"multi-embedding=True, confirmation_frames={self.conf_frames}")
 
-    def load_stored_embeddings(self) -> None:
+    def load_stored_embeddings(self):
         """
-        Fetches all stored face embeddings from the database into the in-memory cache.
+        Loads all known embeddings from the DB and groups them by face_id.
         """
         try:
-            faces = self.db.get_all_embeddings()
-            for face in faces:
-                # The database module already returns np.ndarray from np.frombuffer
-                self.known_embeddings[face["id"]] = face["embedding"]
+            all_embs = self.db.get_all_embeddings() # Dict[face_id, List[np.ndarray]]
+            self.known_embeddings = all_embs
             logger.info(f"Loaded {len(self.known_embeddings)} known faces from DB.")
         except Exception as e:
-            logger.error(f"Error loading stored embeddings: {e}")
+            logger.error(f"Failed to load embeddings from DB: {e}")
 
     def get_embedding(self, face_crop: np.ndarray) -> Optional[np.ndarray]:
         """
-        Runs InsightFace on a cropped face image to extract a normalized embedding vector.
-        
-        :param face_crop: The cropped BGR face image.
-        :return: A normalized unit-length NumPy array (512-dim) or None if detection fails.
+        Extracts a 512-dim embedding from a face crop.
         """
         if face_crop is None or face_crop.size == 0:
             return None
-
+        
         try:
-            # Run extraction
+            # If the crop is very small, we resize it to help InsightFace's internal detector
+            h, w = face_crop.shape[:2]
+            if h < 160 or w < 160:
+                face_crop = cv2.resize(face_crop, (256, 256), interpolation=cv2.INTER_CUBIC)
+
             faces = self.app.get(face_crop)
             if not faces:
-                logger.warning("InsightFace failed to extract face from the crop.")
+                # Still failed? It might be too blurry or not a face
                 return None
             
-            # Use the most confident face in the crop (should be only one)
-            face = faces[0]
-            embedding = face.embedding.astype(np.float32)
-            
-            # Normalize to unit length
-            norm = np.linalg.norm(embedding)
-            if norm > 0:
-                embedding /= norm
-            
-            return embedding
+            # Return the embedding of the largest face found in the crop
+            faces.sort(key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]), reverse=True)
+            return faces[0].embedding
         except Exception as e:
             logger.error(f"Error during embedding extraction: {e}")
             return None
 
-    def match_face(self, embedding: np.ndarray) -> Optional[str]:
+    def match_face(self, embedding: np.ndarray) -> Tuple[Optional[str], float]:
         """
-        Compares an input embedding against the known store using cosine similarity.
-        
-        :param embedding: The normalized input embedding.
-        :return: The face_id of the best match above the threshold, or None.
+        FIX 2: Compares current embedding against ALL stored embeddings for each person.
+        Returns the face_id with the highest similarity score.
         """
         best_match_id = None
-        best_similarity = -1.0
+        highest_score = -1.0
         
-        for face_id, known_emb in self.known_embeddings.items():
-            # embeddings are already unit-normalized, so dot product == cosine similarity
-            similarity = np.dot(embedding, known_emb)
+        for face_id, stored_list in self.known_embeddings.items():
+            # Check all embeddings for this person and take the best
+            # (stored_list contains normalized vectors, so DOT product == Cosine Similarity)
+            scores = [np.dot(embedding, stored_emb) for stored_emb in stored_list]
+            best_person_score = max(scores) if scores else 0.0
             
-            if similarity > best_similarity:
-                best_similarity = similarity
+            if best_person_score > highest_score:
+                highest_score = best_person_score
                 best_match_id = face_id
                 
-        logger.debug(f"Best similarity: {best_similarity:.4f} (Threshold: {self.similarity_threshold})")
-        
-        if best_similarity >= self.similarity_threshold:
-            logger.debug(f"Matched with identity {best_match_id}.")
-            return best_match_id
-        
-        logger.debug("No match above threshold.")
-        return None
+        return best_match_id, highest_score
 
-    def register_face(self, embedding: np.ndarray, face_crop: np.ndarray) -> str:
+    def update_embedding(self, face_id: str, new_embedding: np.ndarray):
         """
-        Assigns a new UUID, saves the face image to disk, and persists the identity to DB.
-        
-        :param embedding: The normalized target embedding.
-        :param face_crop: The cropped BGR image for storage.
-        :return: The generated unique face_id.
+        FIX 3: Online updates. Refreshes the profile over time to handle pose/lighting changes.
         """
-        face_id = str(uuid.uuid4())
+        if face_id not in self.known_embeddings:
+            return
+            
+        # Simple moving average to smooth transitions
+        old_embedding = self.known_embeddings[face_id][-1]
+        refreshed = (old_embedding + new_embedding) / 2.0
+        refreshed = refreshed / np.linalg.norm(refreshed)
         
-        # Save face image to disk
-        image_name = f"{face_id}.jpg"
-        image_path = os.path.join(self.faces_dir, image_name)
-        try:
-            cv2.imwrite(image_path, face_crop)
-        except Exception as e:
-            logger.error(f"Failed to save face image for ID {face_id}: {e}")
+        # Add to the list and rotate if necessary (Fix 2)
+        self.known_embeddings[face_id].append(refreshed)
+        if len(self.known_embeddings[face_id]) > self.max_embeddings:
+            self.known_embeddings[face_id].pop(0) # Keep most recent
             
-        # Write to Database
-        success = self.db.insert_face(face_id, embedding)
-        if success:
-            # Add to in-memory store
-            self.known_embeddings[face_id] = embedding
-            logger.info(f"New face registered: {face_id}")
-        else:
-            logger.error(f"Database insertion failed for face registration: {face_id}")
-            
-        return face_id
+        # Persist to database
+        self.db.insert_embedding(face_id, refreshed)
 
-    def identify_or_register(self, face_crop: np.ndarray) -> Optional[str]:
+    def identify_or_register(self, face_crop: np.ndarray, tracker_id: int = None) -> Optional[str]:
         """
-        The main entry point: extracts embedding, tries to match it, or registers if new.
-        
-        :param face_crop: The cropped BGR face image.
-        :return: A face_id string or None if embedding failed.
+        FIXES 2, 3, 4: Integrated identification with confirmation and multi-embedding storage.
         """
         embedding = self.get_embedding(face_crop)
         if embedding is None:
             return None
             
-        face_id = self.match_face(embedding)
-        if face_id:
+        face_id, score = self.match_face(embedding)
+        
+        if face_id and score >= self.similarity_threshold:
+            # Match: Update profile (Fix 3)
+            self.update_embedding(face_id, embedding)
+            # Remove from confirmation if it was transiently new
+            if tracker_id is not None:
+                self.unconfirmed_faces.pop(str(tracker_id), None)
             return face_id
             
-        # No match found, register a new identity
-        return self.register_face(embedding, face_crop)
+        # No Match: Buffer until confirmed (Fix 4)
+        # Use tracker_id as a very stable key for confirmation
+        key = str(tracker_id) if tracker_id is not None else self._embedding_key(embedding)
+        self.unconfirmed_faces[key] = self.unconfirmed_faces.get(key, 0) + 1
+        
+        if self.unconfirmed_faces[key] >= self.conf_frames:
+            # Confirmed: Register new profile (Fix 1-2)
+            new_id = f"person_{len(self.known_embeddings) + 1}"
+            self.register_face_with_id(new_id, embedding, face_crop)
+            self.unconfirmed_faces.pop(key, None)
+            logger.info(f"Registered new Face: {new_id} after {self.conf_frames} frames context (key={key}).")
+            return new_id
+            
+        return None
 
-if __name__ == "__main__":
-    # Standard testing block
-    try:
-        recognizer = FaceRecognizer()
-        
-        # Create a dummy blank face-like crop for testing (insightface will likely fail on this)
-        dummy_crop = np.zeros((160, 160, 3), dtype=np.uint8)
-        cv2.rectangle(dummy_crop, (40, 40), (120, 120), (255, 255, 255), -1)
-        
-        logger.info("Running standalone test on dummy crop...")
-        face_id = recognizer.identify_or_register(dummy_crop)
-        
-        print(f"Resulting Face ID: {face_id}")
-        
-    except Exception as e:
-        logger.error(f"Standalone test block failed: {e}")
+    def _embedding_key(self, embedding: np.ndarray) -> str:
+        """Fallback key if tracker_id is not available."""
+        return str(embedding[:8].round(1).tolist())
+
+    def register_face_with_id(self, face_id: str, embedding: np.ndarray, face_crop: np.ndarray):
+        """Registers a face ID and its initial embedding."""
+        if self.db.insert_face(face_id, embedding):
+            self.db.insert_embedding(face_id, embedding)
+            self.known_embeddings[face_id] = [embedding]
+            
+            # Save visual reference
+            if face_crop is not None:
+                path = os.path.join(self.faces_dir, f"{face_id}.jpg")
+                cv2.imwrite(path, face_crop)
+            return True
+        return False

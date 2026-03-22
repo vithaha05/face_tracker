@@ -1,15 +1,18 @@
 {
   "video_source": "data/sample.mp4",
-  "yolo_model_path": "yolov8n.pt",
+  "yolo_model_path": "yolov8n-face.pt",
   "model_name": "buffalo_l",
   "frame_skip": 3,
-  "similarity_threshold": 0.4,
-  "detection_confidence": 0.5,
+  "similarity_threshold": 0.5,
+  "detection_confidence": 0.3,
   "db_path": "faces_db/faces.db",
   "log_dir": "logs",
-  "display_output": true,
+  "display_output": false,
   "max_track_age": 30,
   "track_n_init": 3,
   "exit_timeout_frames": 300,
-  "count_print_interval": 30
+  "count_print_interval": 30,
+  "embedding_confirmation_frames": 5,
+  "max_embeddings_per_face": 5,
+  "tracker_trust_enabled": true
 }
