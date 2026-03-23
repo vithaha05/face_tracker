@@ -147,6 +147,32 @@ The following assumptions define the operating conditions for which this pipelin
 
 ---
 
+## 🖥️ Web Dashboard
+
+A read-only Flask web dashboard is included for inspecting tracker output without touching any of the core modules.
+
+```bash
+# Activate your virtual environment first
+source .venv/bin/activate
+
+# Install Flask if not already present
+pip install flask
+
+# Launch the dashboard
+python3 dashboard.py
+# Open http://localhost:5050
+```
+
+| Page | URL | Description |
+|------|-----|-------------|
+| **Live Dashboard** | `/` | Unique visitor count, today's entries/exits, last 20 events with face thumbnails. Auto-refreshes every 5 seconds. |
+| **Face Gallery** | `/faces` | One card per registered face with first-seen timestamp, entry count, and crop image. |
+| **Events Log** | `/events` | Paginated (20/page) full event log with Entry/Exit filter buttons. |
+
+> The dashboard works gracefully with an empty database — all pages show "No data yet" instead of crashing.
+
+---
+
 ### 📝 Hackathon Submission Details
 This project is a part of a hackathon run by [Katomaran](https://katomaran.com). 
 
