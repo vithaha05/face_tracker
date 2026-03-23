@@ -114,8 +114,11 @@ The following parameters are tuned for maximum Re-ID stability:
 ---
 
 ## 🎬 Project Demo
+
 Watch the technical walk-through and demo here:
-[Project Demo Video](https://example.com/demo)
+
+- 🎥 **Loom Video**: [Watch on Loom](https://www.loom.com/share/0ef4d2b3e2004c9c8a03e88cbd1b3577)
+- 📁 **Google Drive**: [View Demo Folder](https://drive.google.com/drive/folders/1O0c1AH0x-7u7DF_SdzoQK2M1Tdqb2VAH?usp=sharing)
 
 ---
 
