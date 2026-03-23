@@ -19,7 +19,6 @@ A production-grade face tracking pipeline designed for counting unique visitors 
 The pipeline follows a modular data-flow design:
 
 ![System Architecture](assets/architecture.png)
-
 ```mermaid
 graph TD
     A[Video Source: MP4/RTSP] --> B[FaceDetector: YOLOv8-Face]
@@ -44,7 +43,7 @@ graph TD
 ### 2. Installation
 ```bash
 # Clone the repository
-git clone <your-repository-url>
+git clone https://github.com/vithaha05/face_tracker
 cd face_tracker
 
 # Create and activate virtual environment
@@ -58,36 +57,25 @@ pip install -r requirements.txt
 ### 3. Usage
 - **To run on sample file**: Move your video to `data/sample.mp4` and run `python3 main.py`.
 - **To run with a custom source**: `python3 main.py --source path/to/video.mp4`.
+- **To run in fast mode**: `python3 main.py --fast` (disables display, maximum speed).
 - **To reset the database**: `python3 main.py --reset-db`.
 - **To run the unit-test suite**: `python3 test_pipeline.py --reset`.
 
 ---
-## 📋 Assumptions Made
 
-1. **Single video source at a time** — the system processes one video file or one RTSP
-   stream per session. Batch processing across multiple files simultaneously is not supported.
+## 📋 Assumptions
 
-2. **Camera is stationary** — the pipeline assumes a fixed camera angle. A moving
-   camera would cause all people to appear as new entries on every frame.
+The following assumptions define the operating conditions for which this pipeline was designed and optimised:
 
-3. **Faces are at least partially visible** — the system requires at least 50% of a face
-   to be visible for InsightFace to generate a reliable embedding. Fully occluded or
-   rear-facing heads may not be detected.
-
-4. **One person per unique face ID** — the system assumes each unique embedding
-   belongs to one individual. Identical twins or people in identical clothing and masks
-   may share a face ID.
-
-5. **Adequate lighting** — the video is assumed to have sufficient lighting for YOLO
-   to detect faces at a confidence threshold of 0.3 or above.
-
-6. **No re-entry within exit timeout window** — a person who exits and re-enters
-   within the exit_timeout_frames window (default 30 frames) may be treated as
-   a continuous presence rather than a new entry.
-
-7. **GPU is optional** — the system runs fully on CPU. If a CUDA-enabled GPU is
-   available, InsightFace will automatically use it via CUDAExecutionProvider,
-   significantly improving speed.
+| # | Assumption | Details |
+|---|------------|---------|
+| 1 | **Single video source at a time** | One video file or one RTSP stream per session. Batch processing across multiple simultaneous sources is not supported. |
+| 2 | **Stationary camera** | A fixed camera angle is assumed. A moving camera would cause every person to appear as a new entry on each frame. |
+| 3 | **Faces at least partially visible** | At least ~50% face visibility is required for InsightFace to generate a reliable embedding. Fully occluded or rear-facing heads may not be detected. |
+| 4 | **One person per unique face ID** | Each unique embedding is assumed to belong to one individual. Identical twins or people wearing identical masks may share a face ID. |
+| 5 | **Adequate lighting** | Sufficient illumination assumed for YOLO to detect faces at a confidence threshold ≥ 0.25 (configurable via `detection_confidence` in `config.json`). |
+| 6 | **No re-entry within exit timeout window** | A person who exits and re-enters within the `exit_timeout_frames` window (default 30 frames) may be treated as a continuous presence rather than a new entry. |
+| 7 | **GPU is optional** | The system runs fully on CPU. If a CUDA-enabled GPU is available, InsightFace will automatically use it via `CUDAExecutionProvider`, significantly improving throughput. |
 
 ---
 
@@ -100,7 +88,7 @@ The following parameters are tuned for maximum Re-ID stability:
   "embedding_confirmation_frames": 5,
   "max_embeddings_per_face": 5,
   "tracker_trust_enabled": true,
-  "detection_confidence": 0.3,
+  "detection_confidence": 0.25,
   "frame_skip": 3,
   "db_path": "faces_db/faces.db"
 }
@@ -127,38 +115,16 @@ The following parameters are tuned for maximum Re-ID stability:
 
 ## 🎬 Project Demo
 Watch the technical walk-through and demo here:
-[Loom/YouTube Demo Link Placeholder](https://example.com/demo)
-
----
-
-## 📋 Assumptions
-
-The following assumptions define the operating conditions for which this pipeline was designed and optimised:
-
-| # | Assumption | Details |
-|---|------------|---------|
-| 1 | **Single video source at a time** | One video file or one RTSP stream per session. Batch processing across multiple simultaneous sources is not supported. |
-| 2 | **Stationary camera** | A fixed camera angle is assumed. A moving camera would cause every person to appear as a new entry on each frame. |
-| 3 | **Faces at least partially visible** | At least ~50% face visibility is required for InsightFace to generate a reliable embedding. Fully occluded or rear-facing heads may not be detected. |
-| 4 | **One person per unique face ID** | Each unique embedding is assumed to belong to one individual. Identical twins or people wearing identical masks may share a face ID. |
-| 5 | **Adequate lighting** | Sufficient illumination assumed for YOLO to detect faces at a confidence threshold ≥ 0.25 (configurable via `face_detection_confidence` in `config.json`). |
-| 6 | **No re-entry within exit timeout window** | A person who exits and re-enters within the `exit_timeout_frames` window (default `30` frames in code, `10` in `config.json`) may be treated as a continuous presence rather than a new entry. |
-| 7 | **GPU is optional** | The system runs fully on CPU. If a CUDA-enabled GPU is available, InsightFace will automatically use it via `CUDAExecutionProvider`, significantly improving throughput. |
+[Project Demo Video](https://example.com/demo)
 
 ---
 
 ## 🖥️ Web Dashboard
 
 A read-only Flask web dashboard is included for inspecting tracker output without touching any of the core modules.
-
 ```bash
-# Activate your virtual environment first
 source .venv/bin/activate
-
-# Install Flask if not already present
 pip install flask
-
-# Launch the dashboard
 python3 dashboard.py
 # Open http://localhost:5050
 ```
@@ -174,6 +140,6 @@ python3 dashboard.py
 ---
 
 ### 📝 Hackathon Submission Details
-This project is a part of a hackathon run by [Katomaran](https://katomaran.com). 
+This project is a part of a hackathon run by [Katomaran](https://katomaran.com).
 
 **Submitted before 12 PM Monday March 23rd.**

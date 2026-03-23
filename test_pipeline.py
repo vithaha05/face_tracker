@@ -91,7 +91,7 @@ class PipelineTester:
                 if not ret: break
                 
                 if detector.should_detect(frame_number):
-                    detections = detector.detect_faces(frame)
+                    detections = detector.detect_all(frame)
                     last_detections = detections
                 else:
                     detections = last_detections
