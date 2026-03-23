@@ -62,6 +62,34 @@ pip install -r requirements.txt
 - **To run the unit-test suite**: `python3 test_pipeline.py --reset`.
 
 ---
+## 📋 Assumptions Made
+
+1. **Single video source at a time** — the system processes one video file or one RTSP
+   stream per session. Batch processing across multiple files simultaneously is not supported.
+
+2. **Camera is stationary** — the pipeline assumes a fixed camera angle. A moving
+   camera would cause all people to appear as new entries on every frame.
+
+3. **Faces are at least partially visible** — the system requires at least 50% of a face
+   to be visible for InsightFace to generate a reliable embedding. Fully occluded or
+   rear-facing heads may not be detected.
+
+4. **One person per unique face ID** — the system assumes each unique embedding
+   belongs to one individual. Identical twins or people in identical clothing and masks
+   may share a face ID.
+
+5. **Adequate lighting** — the video is assumed to have sufficient lighting for YOLO
+   to detect faces at a confidence threshold of 0.3 or above.
+
+6. **No re-entry within exit timeout window** — a person who exits and re-enters
+   within the exit_timeout_frames window (default 30 frames) may be treated as
+   a continuous presence rather than a new entry.
+
+7. **GPU is optional** — the system runs fully on CPU. If a CUDA-enabled GPU is
+   available, InsightFace will automatically use it via CUDAExecutionProvider,
+   significantly improving speed.
+
+---
 
 ## ⚙️ Configuration (`config.json`)
 The following parameters are tuned for maximum Re-ID stability:
@@ -100,6 +128,22 @@ The following parameters are tuned for maximum Re-ID stability:
 ## 🎬 Project Demo
 Watch the technical walk-through and demo here:
 [Loom/YouTube Demo Link Placeholder](https://example.com/demo)
+
+---
+
+## 📋 Assumptions
+
+The following assumptions define the operating conditions for which this pipeline was designed and optimised:
+
+| # | Assumption | Details |
+|---|------------|---------|
+| 1 | **Single video source at a time** | One video file or one RTSP stream per session. Batch processing across multiple simultaneous sources is not supported. |
+| 2 | **Stationary camera** | A fixed camera angle is assumed. A moving camera would cause every person to appear as a new entry on each frame. |
+| 3 | **Faces at least partially visible** | At least ~50% face visibility is required for InsightFace to generate a reliable embedding. Fully occluded or rear-facing heads may not be detected. |
+| 4 | **One person per unique face ID** | Each unique embedding is assumed to belong to one individual. Identical twins or people wearing identical masks may share a face ID. |
+| 5 | **Adequate lighting** | Sufficient illumination assumed for YOLO to detect faces at a confidence threshold ≥ 0.25 (configurable via `face_detection_confidence` in `config.json`). |
+| 6 | **No re-entry within exit timeout window** | A person who exits and re-enters within the `exit_timeout_frames` window (default `30` frames in code, `10` in `config.json`) may be treated as a continuous presence rather than a new entry. |
+| 7 | **GPU is optional** | The system runs fully on CPU. If a CUDA-enabled GPU is available, InsightFace will automatically use it via `CUDAExecutionProvider`, significantly improving throughput. |
 
 ---
 
