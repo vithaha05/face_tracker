@@ -19,10 +19,16 @@ class Database:
         """
         Initializes the database connection and creates tables if they don't exist.
         
-        :param config_path: Path to the configuration file to load the db_path from.
+        :param config_path: Path to the configuration file OR direct path to the .db file.
+                           If it ends with .db, it's used directly as the database path.
+                           Otherwise, it's treated as a config file to read db_path from.
         """
-        config = load_config(config_path)
-        self.db_path = config.get("db_path", "faces_db/faces.db")
+        if config_path.endswith(".db"):
+            # Direct db path was passed (e.g., from recognizer.py)
+            self.db_path = config_path
+        else:
+            config = load_config(config_path)
+            self.db_path = config.get("db_path", "faces_db/faces.db")
         self._initialize_db()
 
     def _get_connection(self):

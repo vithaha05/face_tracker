@@ -11,9 +11,16 @@
   "body_detection_confidence": 0.25,
   "face_visibility_threshold": 0.15,
   "body_visibility_threshold": 0.40,
-  "display_output": false,
+  "display_output": true,
   "debug_mode": false,
   "db_path": "faces_db/faces.db",
   "log_dir": "logs",
-  "track_n_init": 1
+  "track_n_init": 1,
+
+  "_comment_stream": "--- Stream / RTSP Settings ---",
+  "reconnect_attempts": 10,
+  "reconnect_delay_seconds": 2.0,
+  "stream_timeout_ms": 5000,
+  "live_display_fps": 30,
+  "flush_exits_on_stop": true
 }

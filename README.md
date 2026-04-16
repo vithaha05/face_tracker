@@ -12,6 +12,9 @@ A production-grade face tracking pipeline designed for counting unique visitors 
 - **Robust Tracking**: DeepSort integration for multi-object tracking across occlusions.
 - **Auto-Logging**: Automatic face cropping and event logging for entries and exits.
 - **Database Persistence**: SQLite powered for fast, zero-config data storage.
+- **Live Camera & RTSP Support**: Threaded capture with auto-reconnect for real-time streams.
+- **Graceful Shutdown**: Signal handling ensures all active tracks are flushed as EXIT events.
+- **Web Dashboard**: Flask-based read-only dashboard for monitoring tracker output.
 
 ---
 
@@ -21,14 +24,47 @@ The pipeline follows a modular data-flow design:
 ![System Architecture](assets/architecture.png)
 ```mermaid
 graph TD
-    A[Video Source: MP4/RTSP] --> B[FaceDetector: YOLOv8-Face]
-    B --> C[FaceRecognizer: InsightFace]
-    C --> D[FaceTracker: DeepSort]
-    D --> E[Entry/Exit Logic]
-    E --> F[SQLite Database]
-    E --> G[Structured Log Files]
-    E --> H[VisitorCounter]
-    H --> I[Live Console Feedback]
+    A[Video Source: MP4/RTSP/Webcam] --> B[VideoStream: Threaded Capture]
+    B --> C[FaceDetector: YOLOv8-Face + YOLOv8-Body]
+    C --> D[FaceRecognizer: InsightFace buffalo_l]
+    D --> E[FaceTracker: DeepSort]
+    E --> F[Entry/Exit Logic]
+    F --> G[SQLite Database]
+    F --> H[Structured Log Files]
+    F --> I[VisitorCounter]
+    I --> J[Live Console / Dashboard]
+```
+
+---
+
+## 📂 Project Structure
+```
+face_tracker/
+├── main.py                # Entry point — processes video/stream
+├── config.json            # All tunable parameters
+├── dashboard.py           # Flask web dashboard (read-only)
+├── test_pipeline.py       # Automated test suite
+├── requirements.txt       # Python dependencies
+├── AI_PLANNING.md         # AI strategy & compute estimates
+│
+├── modules/
+│   ├── __init__.py
+│   ├── stream.py          # Threaded video capture with auto-reconnect
+│   ├── detector.py        # YOLOv8-Face + Body detection & matching
+│   ├── recognizer.py      # InsightFace embedding & identity management
+│   ├── tracker.py         # DeepSort tracking & entry/exit logic
+│   ├── logger.py          # Event logging (file + image)
+│   ├── visitor_counter.py # Unique visitor counting & DB sync
+│   ├── database.py        # SQLite operations
+│   └── utils.py           # Config loader
+│
+├── data/                  # Video files (gitignored)
+├── faces_db/              # SQLite DB + registered face images
+├── logs/                  # Event logs + cropped face images
+│   ├── events.log
+│   ├── entries/YYYY-MM-DD/
+│   └── exits/YYYY-MM-DD/
+└── assets/                # Architecture diagram
 ```
 
 ---
@@ -54,12 +90,63 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Usage
-- **To run on sample file**: Move your video to `data/sample.mp4` and run `python3 main.py`.
-- **To run with a custom source**: `python3 main.py --source path/to/video.mp4`.
-- **To run in fast mode**: `python3 main.py --fast` (disables display, maximum speed).
-- **To reset the database**: `python3 main.py --reset-db`.
-- **To run the unit-test suite**: `python3 test_pipeline.py --reset`.
+### 3. Download YOLO Models
+The YOLO models (`yolov8n-face.pt` and `yolov8n.pt`) are required but gitignored due to size. They will be auto-downloaded by Ultralytics on first run, or you can download them manually.
+
+---
+
+## ▶️ Usage
+
+### Run on a Video File (Development)
+```bash
+# Default: uses data/sample.mp4 from config.json
+python3 main.py
+
+# Custom video file
+python3 main.py --source path/to/video.mp4
+
+# Fast mode (no display, maximum processing speed)
+python3 main.py --fast
+```
+
+### Run on a Live Webcam
+```bash
+# Default webcam (index 0)
+python3 main.py --source 0
+
+# Specific webcam
+python3 main.py --source 1
+```
+
+### Run on an RTSP Stream (Interview)
+```bash
+# RTSP stream from an IP camera
+python3 main.py --source "rtsp://username:password@192.168.1.100:554/stream1"
+
+# RTSP with display enabled (default)
+python3 main.py --source "rtsp://192.168.1.100:554/live"
+
+# RTSP in fast mode (no display window)
+python3 main.py --source "rtsp://192.168.1.100:554/live" --fast
+```
+
+### Reset Database
+```bash
+python3 main.py --reset-db
+```
+
+### Run Test Suite
+```bash
+python3 test_pipeline.py --reset
+```
+
+### RTSP Stream Configuration
+You can also set the RTSP URL in `config.json` instead of passing it via CLI:
+```json
+{
+  "video_source": "rtsp://192.168.1.100:554/stream1"
+}
+```
 
 ---
 
@@ -74,39 +161,70 @@ The following assumptions define the operating conditions for which this pipelin
 | 3 | **Faces at least partially visible** | At least ~50% face visibility is required for InsightFace to generate a reliable embedding. Fully occluded or rear-facing heads may not be detected. |
 | 4 | **One person per unique face ID** | Each unique embedding is assumed to belong to one individual. Identical twins or people wearing identical masks may share a face ID. |
 | 5 | **Adequate lighting** | Sufficient illumination assumed for YOLO to detect faces at a confidence threshold ≥ 0.25 (configurable via `detection_confidence` in `config.json`). |
-| 6 | **No re-entry within exit timeout window** | A person who exits and re-enters within the `exit_timeout_frames` window (default 30 frames) may be treated as a continuous presence rather than a new entry. |
+| 6 | **No re-entry within exit timeout window** | A person who exits and re-enters within the `exit_timeout_frames` window (default 10 frames) may be treated as a continuous presence rather than a new entry. |
 | 7 | **GPU is optional** | The system runs fully on CPU. If a CUDA-enabled GPU is available, InsightFace will automatically use it via `CUDAExecutionProvider`, significantly improving throughput. |
+| 8 | **Network stability for RTSP** | For RTSP streams, the system auto-reconnects up to 10 times (configurable) on connection loss. Persistent network failure will stop the stream. |
 
 ---
 
 ## ⚙️ Configuration (`config.json`)
-The following parameters are tuned for maximum Re-ID stability:
+
+### Core Parameters
 ```json
 {
-  "yolo_model_path": "yolov8n-face.pt",
-  "similarity_threshold": 0.5,
-  "embedding_confirmation_frames": 5,
-  "max_embeddings_per_face": 5,
-  "tracker_trust_enabled": true,
+  "video_source": "data/sample.mp4",
+  "target_process_fps": 5,
+  "detection_width": 1280,
+  "embedding_confirmation_frames": 1,
+  "exit_timeout_seconds": 2,
+  "similarity_threshold": 0.35,
   "detection_confidence": 0.25,
-  "frame_skip": 3,
-  "db_path": "faces_db/faces.db"
+  "face_detection_confidence": 0.25,
+  "body_detection_confidence": 0.25,
+  "display_output": true,
+  "debug_mode": false,
+  "db_path": "faces_db/faces.db",
+  "log_dir": "logs",
+  "track_n_init": 1
 }
 ```
+
+### Stream / RTSP Parameters
+```json
+{
+  "reconnect_attempts": 10,
+  "reconnect_delay_seconds": 2.0,
+  "stream_timeout_ms": 5000,
+  "live_display_fps": 30,
+  "flush_exits_on_stop": true
+}
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `video_source` | string | `"data/sample.mp4"` | Default video source (file, webcam index, or RTSP URL) |
+| `target_process_fps` | int | `5` | How many frames per second to run the heavy detection pipeline |
+| `similarity_threshold` | float | `0.35` | Cosine similarity threshold for face matching |
+| `exit_timeout_seconds` | float | `2` | Real-time seconds of absence before a face is considered "exited" |
+| `reconnect_attempts` | int | `10` | Max reconnection attempts for live streams |
+| `reconnect_delay_seconds` | float | `2.0` | Seconds between reconnection attempts |
+| `flush_exits_on_stop` | bool | `true` | Whether to log EXIT events for all active tracks when the system stops |
+| `display_output` | bool | `true` | Whether to show the OpenCV display window |
 
 ---
 
 ## 📐 AI Planning & Compute Load Estimates
 
 ### AI Planning Strategy
-1. **Hybrid Inference**: Detection and Recognition run only every 3rd frame (configurable) to save power, while the **Kalman Filter** (Tracker) runs on every frame to maintain smooth trajectories.
+1. **Hybrid Inference**: Detection and Recognition run only every Nth frame (configurable) to save power, while the **Kalman Filter** (Tracker) runs on every frame to maintain smooth trajectories.
 2. **Online Learning**: The system continuously refines a person's average embedding using a moving average, allowing for adaptation to changing lighting or partial occlusions.
-3. **Multi-Template Matching**: We store up to 5 varied embeddings per person, checking all of them to find the best match score, significantly reducing "ID flips."
+3. **Multi-Template Matching**: We store up to 10 varied embeddings per person, checking all of them to find the best match score, significantly reducing "ID flips."
+4. **Threaded Capture**: For live streams, a background thread continuously grabs the latest frame, eliminating RTSP buffer lag.
 
 ### Compute Load (Estimated for MacBook Air M1/M2)
 | Module | CPU Load | Latency (ms) | Notes |
 | :--- | :--- | :--- | :--- |
-| **YOLO-Face (Detect)** | ~35% | ~25ms | Runs once per 3 frames |
+| **YOLO-Face (Detect)** | ~35% | ~25ms | Runs once per N frames |
 | **InsightFace (Recognize)** | ~60% | ~80ms per face | Linear with number of faces |
 | **DeepSort (Track)** | ~10% | ~5ms | Time-stable overhead |
 | **Total System** | ~75% Avg | 10-15 FPS | Optimized for real-time walk-bys |
@@ -139,6 +257,32 @@ python3 dashboard.py
 | **Events Log** | `/events` | Paginated (20/page) full event log with Entry/Exit filter buttons. |
 
 > The dashboard works gracefully with an empty database — all pages show "No data yet" instead of crashing.
+
+---
+
+## 🔌 Live Camera / RTSP Quick Reference
+
+### Supported Source Types
+| Source | Example | Notes |
+|--------|---------|-------|
+| **Video file** | `data/sample.mp4` | Processes at max speed |
+| **Webcam** | `0` or `1` | Threaded capture, auto-reconnect |
+| **RTSP** | `rtsp://192.168.1.100:554/stream1` | FFMPEG backend, 1-frame buffer, auto-reconnect |
+| **HTTP/MJPEG** | `http://192.168.1.100:8080/video` | Threaded capture, auto-reconnect |
+
+### Live Stream Behavior
+- **Background thread** continuously grabs the latest frame (no buffer lag)
+- **Auto-reconnect** on connection drop (configurable retries + delay)
+- **Uptime display** on the video overlay for live streams
+- **Graceful shutdown** via Ctrl+C flushes all active tracks as EXIT events
+- **Periodic stats** logged every 50 processed frames
+
+### Interview Demo Checklist
+1. Ensure the RTSP camera is on the same network
+2. Set `"video_source": "rtsp://..."` in `config.json` or pass via `--source`
+3. Set `"display_output": true` to see the live tracking window
+4. Run: `python3 main.py --source "rtsp://IP:PORT/stream"`
+5. Press 'q' in the display window or Ctrl+C to stop gracefully
 
 ---
 
