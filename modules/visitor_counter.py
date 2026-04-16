@@ -81,6 +81,16 @@ class VisitorCounter:
         
         return is_new
 
+    def register_exit(self, face_id: str, image_path: Optional[str] = None) -> None:
+        """
+        Records an exit event.
+        
+        :param face_id: The identified face ID.
+        :param image_path: Optional path to the exit image.
+        """
+        self.db.insert_event(face_id, "exit", image_path or "")
+        logger.info(f"Visitor exit: face_id={face_id}")
+
     def should_print(self, frame_number: int) -> bool:
         """
         Determines if the visitor count should be printed to the console based on interval.

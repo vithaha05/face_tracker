@@ -146,7 +146,9 @@ def run_frame_pipeline(frame, frame_number, detector, recognizer, tracker, event
     # ── Step 5: Exit Detection ──
     exited_ids = tracker.check_exits(current_tracker_ids)
     for exited_id in exited_ids:
-        event_logger.log_exit(exited_id, None)
+        print(f"EXIT: {exited_id}")
+        crop_path = event_logger.log_exit(exited_id, None)
+        visitor_counter.register_exit(exited_id, crop_path)
 
     if debug_mode:
         msg = f"Frame {frame_number:04} | Raw YOLO (F/B): {num_raw_faces}/{num_raw_bodies} | Embeddings: {num_embeddings} | Matches/Reg: {num_matches}/{num_new_regs} | Total Unique: {visitor_counter.get_unique_count()}"
@@ -155,7 +157,7 @@ def run_frame_pipeline(frame, frame_number, detector, recognizer, tracker, event
     return detections, active_tracks
 
 
-def flush_remaining_exits(tracker, event_logger):
+def flush_remaining_exits(tracker, event_logger, visitor_counter):
     """
     Flush all currently active tracks as EXIT events.
     Called during shutdown to ensure every entry has a corresponding exit.
@@ -164,7 +166,9 @@ def flush_remaining_exits(tracker, event_logger):
     for tracker_id in list(tracker.active_tracks):
         face_id = tracker.track_to_face.get(tracker_id)
         if face_id:
-            event_logger.log_exit(face_id, None)
+            print(f"EXIT: {face_id}")
+            crop_path = event_logger.log_exit(face_id, None)
+            visitor_counter.register_exit(face_id, crop_path)
             flushed += 1
     
     # Clean up tracker state
@@ -364,7 +368,7 @@ def main():
         
         # Flush all remaining active tracks as EXIT events
         if config.get("flush_exits_on_stop", True):
-            flush_remaining_exits(tracker, event_logger)
+            flush_remaining_exits(tracker, event_logger, visitor_counter)
         
         # Stop stream
         stream.stop()
